@@ -12,8 +12,6 @@
         $.error('web2py.js has already been loaded!');
     }
 
-    var FORMDATA_IS_SUPPORTED = typeof(FormData) !== 'undefined';
-
     String.prototype.reverse = function () {
         return this.split('').reverse().join('');
     };
@@ -265,17 +263,13 @@
                 }
             });
             /* help preventing double form submission for normal form (not LOADed) */
-            $(doc).on('submit', 'form', function (e) {
-                var submit_buttons = $(this).find(web2py.formInputClickSelector);
-                submit_buttons.each(function() {
-                    web2py.disableElement($(this));
-                })
+            $(doc).on('submit', 'form', function () {
+                var submit_button = $(this).find(web2py.formInputClickSelector);
+                web2py.disableElement(submit_button);
                 /* safeguard in case the form doesn't trigger a refresh,
                 see https://github.com/web2py/web2py/issues/1100 */
                 setTimeout(function () {
-                    submit_buttons.each(function() {
-                        web2py.enableElement($(this));
-                    });
+                    web2py.enableElement(submit_button);
                 }, 5000);
             });
             doc.ajaxSuccess(function (e, xhr) {
@@ -323,20 +317,27 @@
                     url = action;
                 }
 
-                form.submit(function (e) {
-                    web2py.disableElement(form.find(web2py.formInputClickSelector));
-                    web2py.hide_flash();
+                if (form.find('.upload').length) {
+                    form.ajaxForm({
+                        url     : url,
+                        headers : {
+                            "web2py-component-element":target,
+                            "web2py-component-location":location.href
+                        },
+                        success : function(data, statusText, xhr) {
+                          jQuery('#'+target).html(xhr.responseText);
+                          web2py.trap_form(action, target);
+                        }
+                    })
+                } else {
+                    form.submit(function (e) {
+                        web2py.disableElement(form.find(web2py.formInputClickSelector));
+                        web2py.hide_flash();
+                        web2py.ajax_page('post', url, form.serialize(), target, form);
+                        e.preventDefault();
+                    });
+                }
 
-                    var formData;
-                    if (FORMDATA_IS_SUPPORTED) {
-                        formData = new FormData(form[0]); // Allows file uploads.
-                    } else {
-                        formData = form.serialize(); // Fallback for older browsers.
-                    }
-                    web2py.ajax_page('post', url, formData, target, form);
-
-                    e.preventDefault();
-                });
                 form.on('click', web2py.formInputClickSelector, function (e) {
                     e.preventDefault();
                     var input_name = $(this).attr('name');
@@ -353,18 +354,11 @@
             if (web2py.isUndefined(element)) element = $(document);
             /* if target is not there, fill it with something that there isn't in the page*/
             if (web2py.isUndefined(target) || target === '') target = 'w2p_none';
-
-            /* processData and contentType must be set to false when passing a FormData
-               object to jQuery.ajax. */
-            var isFormData = Object.prototype.toString.call(data) === '[object FormData]';
-            var contentType = isFormData ? false : 'application/x-www-form-urlencoded; charset=UTF-8';
             if (web2py.fire(element, 'ajax:before', null, target)) { /*test a usecase, should stop here if returns false */
                 $.ajax({
                     'type': method,
                     'url': action,
                     'data': data,
-                    'processData': !isFormData,
-                    'contentType': contentType,
                     'beforeSend': function (xhr, settings) {
                         xhr.setRequestHeader('web2py-component-location', document.location);
                         xhr.setRequestHeader('web2py-component-element', target);
@@ -720,9 +714,8 @@
             });
         },
         /* Disables form elements:
-        - Does not disable elements with 'data-w2p_disable' attribute
         - Caches element value in 'w2p_enable_with' data store
-        - Replaces element text with value of 'data-w2p_disable_with' attribute
+        - Replaces element text with value of 'data-disable-with' attribute
         - Sets disabled property to true
         */
         disableFormElements: function (form) {
@@ -734,15 +727,13 @@
                 if (!web2py.isUndefined(disable)) {
                     return false;
                 }
-                if (!element.is(':file')) { // Altering file input values is not allowed.
-                    if (web2py.isUndefined(disable_with)) {
-                        element.data('w2p_disable_with', element[method]());
-                    }
-                    if (web2py.isUndefined(element.data('w2p_enable_with'))) {
-                        element.data('w2p_enable_with', element[method]());
-                    }
-                    element[method](element.data('w2p_disable_with'));
+                if (web2py.isUndefined(disable_with)) {
+                    element.data('w2p_disable_with', element[method]());
                 }
+                if (web2py.isUndefined(element.data('w2p_enable_with'))) {
+                    element.data('w2p_enable_with', element[method]());
+                }
+                element[method](element.data('w2p_disable_with'));
                 element.prop('disabled', true);
             });
         },

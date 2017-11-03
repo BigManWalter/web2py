@@ -317,12 +317,27 @@
                     url = action;
                 }
 
-                form.submit(function (e) {
-                    web2py.disableElement(form.find(web2py.formInputClickSelector));
-                    web2py.hide_flash();
-                    web2py.ajax_page('post', url, form.serialize(), target, form);
-                    e.preventDefault();
-                });
+                if (form.find('.upload').length) {
+                    form.ajaxForm({
+                        url     : url,
+                        headers : {
+                            "web2py-component-element":target,
+                            "web2py-component-location":location.href
+                        },
+                        success : function(data, statusText, xhr) {
+                          jQuery('#'+target).html(xhr.responseText);
+                          web2py.trap_form(action, target);
+                        }
+                    })
+                } else {
+                    form.submit(function (e) {
+                        web2py.disableElement(form.find(web2py.formInputClickSelector));
+                        web2py.hide_flash();
+                        web2py.ajax_page('post', url, form.serialize(), target, form);
+                        e.preventDefault();
+                    });
+                }
+
                 form.on('click', web2py.formInputClickSelector, function (e) {
                     e.preventDefault();
                     var input_name = $(this).attr('name');
